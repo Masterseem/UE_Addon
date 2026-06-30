@@ -1091,6 +1091,20 @@ do
     })
 end
 
+
+on_event("player_got_shot", function(player, target, part, tool, origin, position)
+    if target ~= getPlayer() then
+        return
+    end
+        
+    warn("YOU got shot!")
+    print("Shooter:", player)
+    print("Hit part:", part:GetFullName())
+    print("Tool:", tool)
+    print("Origin:", origin)
+    print("Position:", position)
+end)
+
 -- Reset Interval LOOP
 task.spawn(function()
     while true do
