@@ -1092,7 +1092,7 @@ do
 end
 
 
-on_event("player_got_shot", function(player, target, part, tool, origin, position)
+on_event:("player_got_shot", function(player, target, part, tool, origin, position)
     if target ~= getPlayer() then
         return
     end
@@ -1103,7 +1103,7 @@ on_event("player_got_shot", function(player, target, part, tool, origin, positio
     print("Tool:", tool)
     print("Origin:", origin)
     print("Position:", position)
-end)
+end);
 
 -- Reset Interval LOOP
 task.spawn(function()
