@@ -1,0 +1,1118 @@
+-- // Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+-- // API
+local Tool_cache = api:get_tool_cache();
+
+-- // Connections
+local AttachConnection = nil
+local Fling_Connection = nil
+local Stomp_Connection = nil
+local Hitbox_Connection = nil
+
+-- // State
+local State = "SEARCH"
+
+-- // Reset Interval
+local Auto_Reset = false -- Enable
+local ResetInterval = 10 -- Seconds before auto reset
+local RandomizeTime = false -- Makes it random
+local RandomMin = 4 -- Min seconds for random
+local RandomMax = 10 -- Max seconds for random
+local SpawnProtection = false -- Resets when your spawn protection ends
+
+-- Purchases
+local Bag_Purchase = false
+local BagPurchaseThreadRunning = false
+
+-- (Anti Bag)
+local Anti_Bag = false
+local WasBagged = false
+
+-- // Anti Fling
+local Anti_Fling = false
+local Fling_Threshold = 500
+local BagThreadRunning = false
+
+-- // Knife
+local Knife_Purchase = false
+local Knife_Auto = false
+local Knife_Tool = "[Knife]"
+
+-- // Auto
+local Auto = false
+local AutoThreadRunning = false
+local SelectedPlayers = {}
+local TeleportInterval = 0
+local MinTeleportInterval = 0
+local MaxTeleportInterval = 60
+local CurrentTargetIndex = nil
+local IsResetting = false
+local HookedTargetCharacter = nil
+local CheckIfBagged  = false
+local Auto_Stomp = false
+local Offset = 2
+local Offset_Min = 0
+local Offset_Max = 20
+-- Prediction
+local Prediction = false
+local PredictionAmount = 0.12
+
+-- // Hitbox Extender
+local Hitbox_Extender = true
+local Hitbox_Size = 2
+local Hitbox_Size_Max = 50
+local Hitbox_Size_Min = 1
+
+-- // Return On Death
+local ReturnOnDeath = false
+local ReturnCFrame = nil
+local ReturnDelay = 0.17
+local ReturnDelay_Min = 0.1
+local ReturnDelay_Max = 2
+
+-- // Testing
+local Auto_Activate = false
+local Auto_Activate_Running = false
+
+-- // Main
+local CanReset = true
+
+-- Get All Players
+local function getPlayerList()
+    local list = {}
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= Players.LocalPlayer then
+            table.insert(list, plr.Name)
+        end
+    end
+
+    return list
+end
+
+-- Get Player
+local function getPlayer()
+    while not Players.LocalPlayer do
+        task.wait()
+    end
+    return Players.LocalPlayer
+end
+
+-- Get Backpack
+local function getBackpack(Player)
+    Player = Player or getPlayer()
+    if not Player then return nil end
+
+    return Player:FindFirstChild("Backpack")
+end
+
+-- Get Character
+local function getCharacter(Player)
+    Player = Player or getPlayer()
+    if not Player then return nil end
+
+    local Character = Player.Character
+    if not Character then 
+        Character = Player.CharacterAdded:Wait()
+    end
+    return Character
+end
+
+-- Get Humanoid
+local function getHumanoid(Character)
+    if not Character then return nil end
+    return Character:FindFirstChildOfClass("Humanoid")
+end
+
+-- Get Root
+local function getRoot(Character)
+    if not Character then return nil end
+    return Character:FindFirstChild("HumanoidRootPart")
+end
+
+-- Check If Player Has Tool
+local function HasTool(Player, ToolName)
+    if not Player then return false end
+    
+    local Backpack = getBackpack(Player)
+    if Backpack and Backpack:FindFirstChild(ToolName) then return true end
+
+    local Character = getCharacter(Player)
+    if Character and Character:FindFirstChild(ToolName) then return true end
+
+    return false
+end
+
+-- Check If Bagged
+local function isBagged()
+    local player = getPlayer()
+    if not player then return false end
+
+    local character = getCharacter()
+    if not character then return false end
+
+    return character:FindFirstChild("Christmas_Sock") ~= nil
+end
+
+-- Check If Target Is Bagged
+local function TargetHasBag(player)
+    if not player or not player.Character then
+        return false
+    end
+
+    return player.Character:FindFirstChild("Christmas_Sock") ~= nil
+end
+
+-- Reset Character
+local function ResetCharacter(force)
+    if not force then return end
+    --if not Auto_Reset then return end
+    if not CanReset then return end
+
+    local Character = getCharacter()
+    if not Character then return end
+    
+    local Humanoid = getHumanoid(Character)
+    local Root = getRoot(Character)
+
+    if Humanoid then
+        Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+    else
+        Character:BreakJoints()
+    end
+end
+
+local function EquipTool(ToolName)
+    local player = getPlayer()
+    local character = player.Character or player.CharacterAdded:Wait()
+    local backpack = player:FindFirstChild("Backpack")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+    if not character or not backpack or not humanoid then return end
+
+    local tool = character:FindFirstChild(ToolName) or backpack:FindFirstChild(ToolName)
+    if not tool then return end
+
+    if tool.Parent ~= character then
+        humanoid:EquipTool(tool)
+        task.wait(0.05)
+    end
+end
+
+local function SafeWaitForCharacter()
+    local player = getPlayer()
+    return player.Character or player.CharacterAdded:Wait()
+end
+
+-- Buy Item
+local function BuyItem(Item_Name)
+    if not Item_Name or Item_Name == "" then return end
+
+    repeat task.wait(); until api:can_desync();
+    api:buy_item("[" .. Item_Name)
+end
+
+-- Shoot Myself
+local function ShootMyself()
+    local Player = getPlayer()
+    if not Player then return end
+
+    local Character = getCharacter()
+    if not Character then return end
+
+    local tool = Character:FindFirstChildOfClass("Tool");
+    if not tool or not tool:FindFirstChild("Handle") then return end
+
+    local root = getRoot(Character)
+    if not root then return end
+
+    local part = Character:FindFirstChild("Head")
+    if not part then return end
+
+    api:force_shoot(tool.Handle, part, root.Position, part.Position, true);
+end
+
+-- Teleport
+--[[local function Teleport(cframe)
+    api:teleport(cframe)
+end]]
+
+local function Teleport(cframe)
+    local character = getCharacter()
+    local root = getRoot(character)
+    if root then
+        root.CFrame = cframe
+    end
+end
+
+local function PrintInventory()
+    local player = getPlayer()
+    local backpack = getBackpack(player)
+    local character = getCharacter(player)
+
+    print("Current Tool: " .. tostring(cache.instance))
+    print("Handle: ", tostring(cache.handle))
+
+    print("____________Inventory____________")
+
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            print("[Backpack] " .. item.Name)
+        end
+    end
+
+    if character then
+        for _, item in ipairs(character:GetChildren()) do
+            if item:IsA("Tool") then
+                print("[Equipped] " .. item.Name)
+            end
+        end
+    end
+end
+
+-- Anti Bag Loop
+local function Bag_Purchase_Loop()
+    if BagPurchaseThreadRunning then return end
+    BagPurchaseThreadRunning = true
+
+    while Bag_Purchase do
+        local success, err = pcall(function()
+            if not IsResetting and not HasTool(getPlayer(), "[BrownBag]") then
+                IsResetting = true
+                ResetCharacter(true)
+            end
+        end)
+
+        if not success then
+            warn("[BagPurchase] Error: " .. tostring(err))
+        end
+
+        task.wait(2)
+    end
+
+    BagPurchaseThreadRunning = false
+end
+
+-- Get The Targets State
+local function GetTargetState(status)
+    if not status then
+        return "UNKNOWN"
+    end
+
+    if status["Grabbed"] then
+        return "GRABBED"
+    end
+
+    if status["SDeath"] then
+        return "SDEATH"
+    end
+
+    if status["K.O"] then
+        return "KO"
+    end
+
+    if status["Reload"] then
+        return "RELOADING"
+    end
+
+    if status["Dead"] then
+        return "DEAD"
+    end
+
+    if status["Anonymous"] then
+        return "ANONYMOUS"
+    end
+
+    return "NORMAL"
+end
+
+-- Detach The Connection
+local function DetachFromTarget()
+    if AttachConnection then
+        AttachConnection:Disconnect()
+        AttachConnection = nil
+    end
+end
+
+-- Reset State
+local function ResetAutoState()
+    DetachFromTarget()
+
+    if Fling_Connection then
+        Fling_Connection:Disconnect()
+        Fling_Connection = nil
+    end
+
+    if Stomp_Connection then
+        Stomp_Connection:Disconnect()
+        Stomp_Connection = nil
+    end
+
+    CurrentTargetIndex = 0
+    IsResetting = false
+end
+
+-- Start The Stomping State LOOP
+local function StartStomp_Loop(targetCharacter)
+    if Stomp_Connection then
+        Stomp_Connection:Disconnect()
+        Stomp_Connection = nil
+    end 
+
+    local statusCache = api:get_status_cache(Players.LocalPlayer)
+
+    Stomp_Connection = RunService.Heartbeat:Connect(function()
+        if not Auto_KO then
+            Stomp_Connection:Disconnect()
+            Stomp_Connection = nil
+            return
+        end
+
+        if not statusCache["K.O"] then return end
+
+        local torso = targetCharacter and targetCharacter:FindFirstChild("UpperTorso")
+        if not torso then return end
+
+        Teleport(torso.CFrame)
+    end)
+end
+
+-- Attach The Connection
+local function AttachToTarget(targetCharacter)
+    DetachFromTarget()
+
+    local function doTeleport()
+        local player = Players.LocalPlayer
+        if not player.Character or not targetCharacter or not targetCharacter.Parent then
+            DetachFromTarget()
+            return
+        end
+
+        local myRoot = getRoot(player.Character)
+        if not myRoot then
+            DetachFromTarget()
+            return
+        end
+
+        local torso = targetCharacter and targetCharacter:FindFirstChild("UpperTorso")
+        local root = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+        local myRoot = getRoot(getCharacter())
+
+        if not torso or not root or not myRoot then
+            DetachFromTarget()
+            return
+        end
+
+        local targetPos = root.Position
+        local velocity = root.AssemblyLinearVelocity or Vector3.zero
+
+        local distance = (myRoot.Position - targetPos).Magnitude
+        local scale = math.clamp(distance / 100, 0.15, 1)
+
+        local predictedPosition = targetPos
+        if Prediction then
+            predictedPosition = targetPos + (velocity * PredictionAmount * scale)
+        end
+
+        local targetCFrame = CFrame.new(predictedPosition)
+
+        Teleport(targetCFrame * CFrame.new(0, 0, Offset))
+    end
+
+    AttachConnection = RunService.Heartbeat:Connect(doTeleport)
+end
+
+local function StartFlingDetection()
+    if Fling_Connection then
+        Fling_Connection:Disconnect()
+        Fling_Connection = nil
+    end
+
+    Fling_Connection = RunService.Heartbeat:Connect(function()
+        if not Anti_Fling then
+            Fling_Connection:Disconnect()
+            Fling_Connection = nil
+            return
+        end
+
+        local character = Players.LocalPlayer.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+
+        if root.Position.Y < -Fling_Threshold and not IsResetting then
+            IsResetting = true
+            ResetCharacter(true)
+        end
+    end)
+end
+
+-- Hook Character After Dying
+local function hookCharacterDying(character)
+    local humanoid = character:WaitForChild("Humanoid", 10)
+    local root = character:WaitForChild("HumanoidRootPart", 10)
+    if not humanoid or not root then return end
+
+    humanoid.Died:Connect(function()
+        if ReturnOnDeath then
+            ReturnCFrame = root.CFrame
+        end
+    end)
+end
+
+-- Set Hitboxes On Players
+local function SetHitboxes(Enabled, Size)
+    if Hitbox_Connection then
+        Hitbox_Connection:Disconnect()
+        Hitbox_Connection = nil
+    end
+    
+    -- Check If Enabled
+    if not Enabled then
+        for _, Player in ipairs(Players:GetPlayers()) do
+            if Player ~= Players.LocalPlayer and Player.Character then
+                local root = Player.Character:FindFirstChild("HumanoidRootPart")
+                if root then
+                    root.Size = Vector3.new(2, 2, 1)
+                    root.Transparency = 1
+                    root.CanCollide = false
+                end
+            end
+        end
+
+        return
+    end
+
+    -- Apply The Hitbox On The Player
+    local function applyHitbox(Player)
+        if Player == Players.LocalPlayer or not Player.Character then return end
+        local root = Player.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            root.Size = Vector3.new(Size, Size, Size)
+            root.Transparency = 0.5
+            root.CanCollide = false
+        end
+    end
+
+    Hitbox_Connection = RunService.Heartbeat:Connect(function()
+        for _, Player in ipairs(Players:GetPlayers()) do
+            applyHitbox(Player)
+        end
+    end)
+end
+
+-- Killing LOOP
+function Auto_Loop()
+    while Auto do
+        local success, err = pcall(function()
+
+            local player = getPlayer()
+            local character = player.Character or player.CharacterAdded:Wait()
+
+            -- STOP IF NO CHARACTER
+            if not character or not character.Parent then
+                task.wait(0.5)
+                return
+            end
+
+            -- ENSURE BAG
+            if not HasTool(player, "[BrownBag]") and not IsResetting then
+                IsResetting = true
+                ResetCharacter(true)
+
+                task.wait(1.5)
+                return
+            end
+
+            -- EQUIP BAG
+            if HasTool(player, "[BrownBag]") then
+                EquipTool("[BrownBag]")
+            end
+
+            -- BUILD TARGETS
+            local targets = {}
+
+            for name, enabled in pairs(SelectedPlayers) do
+                if enabled then
+                    local plr = Players:FindFirstChild(name)
+                    if plr and plr.Character then
+                        table.insert(targets, plr)
+                    end
+                end
+            end
+
+            if #targets == 0 then
+                task.wait(0.5)
+                return
+            end
+
+            -- TARGET INDEX
+            CurrentTargetIndex = (CurrentTargetIndex or 0) + 1
+            if CurrentTargetIndex > #targets then
+                CurrentTargetIndex = 1
+            end
+
+            local target = targets[CurrentTargetIndex]
+            if not target or not target.Character then
+                task.wait(0.5)
+                return
+            end
+
+            -- ATTACH
+            DetachFromTarget()
+            AttachToTarget(target.Character)
+
+            if Auto_Stomp then
+                StartStomp_Loop(target.Character)
+            end
+
+            -- STATE LOOP
+            local state = "BAG"
+
+            while Auto do
+                character = player.Character
+                if not character or not character.Parent then
+                    break
+                end
+                
+                local char = target.Character
+                if not char or not char.Parent then
+                    break
+                end
+
+                local status = api:get_status_cache(target)
+
+                if status and status.Grabbed then
+                    task.wait(0.1)
+                    continue
+                end
+
+                if status and status.SDeath then
+                    break
+                end
+
+                -- BAG
+                if state == "BAG" then
+                    if char:FindFirstChild("Christmas_Sock") then
+                        state = "KNIFE"
+                    else
+                        local tool = character:FindFirstChildOfClass("Tool")
+                        if tool then tool:Activate() end
+                    end
+                end
+
+                -- KNIFE
+                if state == "KNIFE" and Knife_Auto then
+                    EquipTool(Knife_Tool)
+
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health <= 0.1 then
+                        state = "STOMP"
+                    end
+
+                    local root = char:FindFirstChild("HumanoidRootPart")
+                    if root then
+                        Teleport(root.CFrame * CFrame.new(0, 0, Offset))
+                    end
+
+                    local currentCharacter = player.Character
+                    local tool = currentCharacter and currentCharacter:FindFirstChildOfClass("Tool")
+
+                    if tool then
+                        tool:Activate()
+                    end
+                end
+
+                -- STOMP
+                if state == "STOMP" and Auto_Stomp then
+                    if status and not status["K.O"] then
+                        break
+                    end
+
+                    local torso = char:FindFirstChild("UpperTorso")
+                    if torso then
+                        Teleport(torso.CFrame)
+                    end
+                end
+
+                task.wait(0.05)
+            end
+
+            -- RESET
+            DetachFromTarget()
+
+        end)
+
+        if not success then
+            warn("Auto Error:", err)
+        end
+
+        task.wait(0.1)
+    end
+
+    AutoThreadRunning = false
+end
+
+-- Reset When Bagged
+local function Anti_Bag_Loop()
+    if BagThreadRunning then return end
+    BagThreadRunning = true
+
+    while Anti_Bag do
+        local success, err = pcall(function()
+            if isBagged() and not IsResetting then
+                IsResetting = true
+                ResetCharacter(true)
+            end
+        end)
+
+        if not success then
+            warn("[AntiBag] Error: " .. tostring(err))
+        end
+
+        task.wait(0.5)
+    end
+
+    BagThreadRunning = false
+end
+
+-- When Client Dies
+--[[api:on_event("localplayer_died", function()
+    local Character = getCharacter()
+    if not Character then return end
+
+    local Root = getRoot(Character)
+    if not Root then return end
+
+    if ReturnOnDeath then
+        ReturnCFrame = Root.CFrame
+    end
+end);]]
+
+-- When Client Respawns
+api:on_event("localplayer_spawned", function(character)
+    WasBagged = false
+    hookCharacterDying(character)
+
+    ResetAutoState()
+
+    if SpawnProtection then
+        task.wait(10)
+        IsResetting = true
+        ResetCharacter(true)
+        return
+    end
+
+    if (Bag_Purchase or Auto) and not HasTool(getPlayer(), "[BrownBag]") then
+        task.wait(0.2)
+        BuyItem("BrownBag")
+        task.wait(0.25)
+        EquipTool("[BrownBag]")
+    end
+
+    if Knife_Auto and not HasTool(getPlayer(), Knife_Tool) then
+        task.wait(0.25)
+        BuyItem(Knife_Tool)
+    end
+
+    IsResetting = false
+
+    if CheckIfBagged then
+        repeat task.wait(0.5) until not isBagged()
+    end
+    
+    if CheckIfBagged and isBagged() then
+        if WaitIfBagged then
+            repeat task.wait(0.5) until not isBagged()
+        else
+            if not IsResetting then
+                IsResetting = true
+                ResetCharacter(true)
+            end
+        end
+    end
+
+    if Auto and not AutoThreadRunning then
+        AutoThreadRunning = true
+        task.spawn(Auto_Loop)
+    end
+
+    if ReturnOnDeath and ReturnCFrame then
+        task.wait(ReturnDelay)
+        Teleport(ReturnCFrame)
+    end
+end);
+
+local player = getPlayer()
+local initialCharacter = player.Character or player.CharacterAdded:Wait()
+hookCharacterDying(initialCharacter)
+
+-- // Tabes
+local tabs = {
+    lua = api:AddTab("Extra");
+};
+
+do
+    local Abuse_Feature = tabs.lua:AddLeftGroupbox("Abuse Features")
+    --local Teleport_Feature = tabs.lua:AddLeftGroupbox("Teleport Features")
+    local Kill_Feature = tabs.lua:AddRightGroupbox("Kill Features")
+    local Buy_Feature = tabs.lua:AddRightGroupbox("Buy Features")
+    local Anti_Bag_Features = tabs.lua:AddRightGroupbox("Anti Bag Features")
+    local Testing_Features = tabs.lua:AddLeftGroupbox("Testing Features")
+
+    -- Check If Owned Gun
+    Abuse_Feature:AddToggle("Gun Auto-Buy", {
+        Text = "Auto-buy gun if not owned",
+        Default = false,
+
+        Callback = function(value)
+            CheckTool = value
+        end
+    })
+
+    -- Enable Auto Reset
+    Abuse_Feature:AddLabel("Auto Reset"):AddKeyPicker("AutoResetKey", {
+        Default = "",
+        Mode = "Toggle",
+        Text = "Auto Reset",
+    })
+    Options.AutoResetKey:OnClick(function(state)
+        Auto_Reset = state
+    end)
+
+    -- Reset Interval
+    Abuse_Feature:AddSlider("Reset Interval", {
+        Text = "Reset Interval",
+        Min = 1,
+        Max = 30,
+        Default = 2,
+        Rounding = 0,
+
+        Callback = function(value)
+            ResetInterval = value
+        end
+    })
+
+    -- Randomize Time
+    Abuse_Feature:AddToggle("Randomize", {
+        Text = "Randomize Time",
+        Default = false,
+
+        Callback = function(value)
+            RandomizeTime = value
+        end
+    })
+
+    -- Min Random Time
+    Abuse_Feature:AddSlider("Random Min", {
+        Text = "Random Min Time",
+        Min = 1,
+        Max = 20,
+        Default = 4,
+        Rounding = 0,
+
+        Callback = function(value)
+            RandomMin = value
+        end
+    })
+
+    -- Max Random Time
+    Abuse_Feature:AddSlider("Random Max", {
+        Text = "Random Max Time",
+        Min = 2,
+        Max = 30,
+        Default = 8,
+        Rounding = 0,
+
+        Callback = function(value)
+            RandomMax = value
+        end
+    })
+    
+    Abuse_Feature:AddToggle("Spawn Protection", {
+        Text = "Spawn Protection",
+        Default = false,
+
+        Callback = function(value)
+            SpawnProtection = value
+        end
+    })
+
+
+    -- Select A Players To Target
+    Kill_Feature:AddDropdown("Target Player", {
+        SpecialType = 'Player',
+        Text = "Select Players",
+        Multi = true,
+        
+        Callback = function(value)
+            SelectedPlayers = value or {}
+        end
+    })
+    
+    -- Search Player To Add To Target
+    Kill_Feature:AddInput("PlayerSearch", {
+        Text = "Add Player",
+        Placeholder = "Type player name...",
+        Finished = true,
+        
+        Callback = function(text)
+            text = text:lower()
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= Players.LocalPlayer then
+                    if plr.Name:lower():find(text, 1, true) then
+                        SelectedPlayers[plr.Name] = true
+                        
+                        local dropdown = Options["Target Player"]
+                        if dropdown then
+                            dropdown:SetValue(SelectedPlayers)
+                        end
+                        break
+                    end
+                end
+            end
+        end
+    })
+
+    -- Target Enable
+    --[[Kill_Feature:AddToggle("Enable", {
+        Text = "Enable",
+        Default = false,
+
+        Callback = function(value)
+            Target_Enable = value
+        end
+    })]]
+    
+    -- Testing Feature
+    Testing_Features:AddButton({
+        Text = "Check Inventory",
+        Func = function()
+            PrintInventory()
+        end,
+    })
+
+    -- Testing Feature
+    Testing_Features:AddButton({
+        Text = "Hit Myself",
+        Func = function()
+            ShootMyself()
+        end,
+    })
+
+    Testing_Features:AddButton({
+        Text = "Force Reset",
+        Func = function()
+            ResetCharacter(true)
+        end,
+    })
+    
+    Kill_Feature:AddToggle("Hitbox Extender", {
+        Text = "Hitbox Extender",
+        Default = false,
+        
+        Callback = function(value)
+            Hitbox_Extender = value
+            SetHitboxes(value, Hitbox_Size)
+        end
+    })
+
+    Kill_Feature:AddSlider("Hitbox Size", {
+        Text = "Hitbox Size",
+        Min = Hitbox_Size_Min,
+        Max = Hitbox_Size_Max,
+        Default = 2,
+        Rounding = 0,
+
+        Callback = function(value)
+            Hitbox_Size = value
+            if Hitbox_Extender then
+                SetHitboxes(true, Hitbox_Size)
+            end
+        end
+    })
+
+    -- Auto Bagging
+    Kill_Feature:AddToggle("Auto", {
+        Text = "Auto Bagging",
+        Default = false,
+
+        Callback = function(value)
+            Auto = value
+            
+            if value then
+                if not AutoThreadRunning then
+                    AutoThreadRunning = true
+                    task.spawn(Auto_Loop)
+                end
+            else
+                DetachFromTarget()
+            end
+        end
+    })
+
+    Abuse_Feature:AddToggle("Anti Fling", {
+        Text = "Anti Fling",
+        Default = false,
+        
+        Callback = function(value)
+            Anti_Fling = value
+            
+            if value then
+                StartFlingDetection()
+            else
+                if Fling_Connection then
+                    Fling_Connection:Disconnect()
+                    Fling_Connection = nil
+                end
+            end
+        end
+    })
+
+    -- Check If Target Is Bagged
+    Kill_Feature:AddToggle("Check If Bagged", {
+        Text = "Wait if bagged on spawn",
+        Default = false,
+        
+        Callback = function(value)
+            CheckIfBagged = value
+        end
+    })
+
+    Kill_Feature:AddToggle("Knife", {
+        Text = "Knife",
+        Default = false,
+        
+        Callback = function(value)
+            Knife_Auto = value
+        end
+    })
+
+    Kill_Feature:AddToggle("Stomp", {
+        Text = "Stomp",
+        Default = false,
+        
+        Callback = function(value)
+            Auto_Stomp = value
+            
+            if not value and Stomp_Connection then
+                Stomp_Connection:Disconnect()
+                Stomp_Connection = nil
+            end
+        end
+    })
+
+    -- Telepot Offset
+    Kill_Feature:AddSlider("Offset", {
+        Text = "Offset(Z)",
+        Min = Offset_Min,
+        Max = Offset_Max,
+        Default = 0,
+        Rounding = 0,
+
+        Callback = function(value)
+            Offset = value
+        end
+    })
+
+    Kill_Feature:AddToggle("Prediction", {
+        Text = "Prediction",
+        Default = false,
+        
+        Callback = function(value)
+            Prediction = value
+        end
+    })
+
+    Kill_Feature:AddSlider("PredictionAmount", {
+        Text = "Prediction Amount",
+        Min = 0,
+        Max = 0.5,
+        Default = 0.12,
+        Rounding = 2,
+        
+        Callback = function(value)
+            PredictionAmount = value
+        end
+    })
+
+    -- Auto Buy Bag
+    Buy_Feature:AddToggle("Bag", {
+        Text = "Buy Bag",
+        Default = false,
+
+        Callback = function(value)
+            Bag_Purchase = value
+
+            if value and not BagPurchaseThreadRunning then
+                task.spawn(Bag_Purchase_Loop)
+            end
+        end
+    })
+
+    -- Anti Bag
+    Anti_Bag_Features:AddToggle("Anti Bag", {
+        Text = "Anti Bag",
+        Default = false,
+
+        Callback = function(value)
+            Anti_Bag = value
+            print("Anti Bag:" .. tostring(Anti_Bag))
+
+            if value and not BagThreadRunning then
+                task.spawn(Anti_Bag_Loop)
+            end
+        end
+    })
+
+    -- Return On Death
+    Abuse_Feature:AddToggle("Respawn", {
+        Text = "Return On Death",
+        Default = false,
+
+        Callback = function(value)
+            ReturnOnDeath = value
+        end
+    })
+
+    -- Return Delay
+    Abuse_Feature:AddSlider("ReturnDelay", {
+        Text = "Return Delay",
+        Min = ReturnDelay_Min,
+        Max = ReturnDelay_Max,
+        Default = 0.17,
+        Rounding = 2,
+        
+        Callback = function(value)
+            ReturnDelay = value
+        end
+    })
+end
+
+-- Reset Interval LOOP
+task.spawn(function()
+    while true do
+        if Auto_Reset and CanReset and not SpawnProtection then
+            local waitTime = ResetInterval
+
+            if RandomizeTime then
+                waitTime = math.random(RandomMin, RandomMax)
+            end
+
+            local start = tick()
+            while tick() - start < waitTime do
+                if not Auto_Reset then
+                    break
+                end
+                task.wait(0.1)
+            end
+
+            if Auto_Reset and CanReset then
+                ResetCharacter(true)
+            end
+        else
+            task.wait(0.5)
+        end
+    end
+end)
