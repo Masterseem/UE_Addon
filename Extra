@@ -1,7 +1,6 @@
 -- // Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local TeleportService = game:GetService("TeleportService")
 
 -- // API
 local Tool_cache = api:get_tool_cache();
@@ -745,6 +744,14 @@ api:on_event("localplayer_spawned", function(character)
     end
 end);
 
+api:on_event("player_got_shot", function(player, target, part, tool, origin, position)
+    if target ~= getPlayer() then
+        return
+    end
+
+    warn(target, "hit", player, "in the", part, "using", tool);
+end);
+
 local player = getPlayer()
 local initialCharacter = player.Character or player.CharacterAdded:Wait()
 hookCharacterDying(initialCharacter)
@@ -1090,20 +1097,6 @@ do
         end
     })
 end
-
-
-on_event:("player_got_shot", function(player, target, part, tool, origin, position)
-    if target ~= getPlayer().Name then
-        return
-    end
-
-    warn("YOU got shot!")
-    print("Shooter:", player)
-    print("Hit part:", part:GetFullName())
-    print("Tool:", tool)
-    print("Origin:", origin)
-    print("Position:", position)
-end)
 
 -- Reset Interval LOOP
 task.spawn(function()
