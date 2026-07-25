@@ -1293,7 +1293,7 @@ do
         end,
     })
 
-    Testing_Features:AddLabel('Goto Target'):AddKeyPicker('GotoTargetKeybind', {
+    Testing_Features:AddLabel('.👳🏿‍♂️.'):AddKeyPicker('.👳🏿‍♂️.', {
         Default = 'M',
         Mode = 'Always',
         NoUI = false,
@@ -1301,6 +1301,7 @@ do
         Text = 'Does something idk',
         
         Callback = function(Value)
+            print("Attacking Player")
             DetachFromTarget()
             
             local targetList = {}
