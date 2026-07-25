@@ -1088,6 +1088,36 @@ api:on_command("*", function(player, command, targetArg, ...)
     end
 end)
 
+local function CycleTarget()
+    DetachFromTarget()
+
+    local targetList = {}
+    for name, enabled in pairs(SelectedPlayers) do
+        if enabled then
+            table.insert(targetList, name)
+        end
+    end
+
+    if #targetList == 0 then
+        return
+    end
+
+    LastTargetIndex = LastTargetIndex + 1
+    if LastTargetIndex > #targetList then
+        LastTargetIndex = 1
+    end
+
+    local name = targetList[LastTargetIndex]
+    local player = Players:FindFirstChild(name)
+
+    if player then
+        Shoot_Target(player)
+    else
+        table.remove(targetList, LastTargetIndex)
+        LastTargetIndex = LastTargetIndex - 1
+    end
+end
+
 -- // Tabes
 local tabs = {
     lua = api:AddTab("Extra");
@@ -1292,44 +1322,16 @@ do
             end
         end,
     })
-
-    Testing_Features:AddLabel('.👳🏿‍♂️.'):AddKeyPicker('.👳🏿‍♂️.', {
+    
+    Testing_Features:AddLabel('¯\_(ツ)_/¯'):AddKeyPicker('¯\_(ツ)_/¯', {
         Default = 'M',
         Mode = 'Always',
         NoUI = false,
-        
+
         Text = 'Does something idk',
         
         Callback = function(Value)
-            print("Attacking Player")
-            DetachFromTarget()
-            
-            local targetList = {}
-            for name, enabled in pairs(SelectedPlayers) do
-
-                if enabled then
-                    table.insert(targetList, name)
-                end
-            end
-            
-            if #targetList == 0 then
-                return
-            end
-            
-            LastTargetIndex = LastTargetIndex + 1
-            if LastTargetIndex > #targetList then
-                LastTargetIndex = 1
-            end
-            
-            local name = targetList[LastTargetIndex]
-            local player = Players:FindFirstChild(name)
-            
-            if player then
-                Shoot_Target(player)
-            else
-                table.remove(targetList, LastTargetIndex)
-                LastTargetIndex = LastTargetIndex - 1
-            end
+            CycleTarget()
         end,
     })
 
