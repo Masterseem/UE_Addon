@@ -1261,7 +1261,7 @@ do
     })]]
 
     Testing_Features:AddButton({
-        Text = "Shoot Player",
+        Text = "Attack Player",
         Func = function()
             DetachFromTarget()
 
@@ -1284,6 +1284,45 @@ do
             local name = targetList[LastTargetIndex]
             local player = Players:FindFirstChild(name)
 
+            if player then
+                Shoot_Target(player)
+            else
+                table.remove(targetList, LastTargetIndex)
+                LastTargetIndex = LastTargetIndex - 1
+            end
+        end,
+    })
+
+    Testing_Features:AddLabel('Goto Target'):AddKeyPicker('GotoTargetKeybind', {
+        Default = 'M',
+        Mode = 'Always',
+        NoUI = false,
+        
+        Text = 'Does something idk',
+        
+        Callback = function(Value)
+            DetachFromTarget()
+            
+            local targetList = {}
+            for name, enabled in pairs(SelectedPlayers) do
+
+                if enabled then
+                    table.insert(targetList, name)
+                end
+            end
+            
+            if #targetList == 0 then
+                return
+            end
+            
+            LastTargetIndex = LastTargetIndex + 1
+            if LastTargetIndex > #targetList then
+                LastTargetIndex = 1
+            end
+            
+            local name = targetList[LastTargetIndex]
+            local player = Players:FindFirstChild(name)
+            
             if player then
                 Shoot_Target(player)
             else
