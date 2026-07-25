@@ -14,6 +14,29 @@ local Hitbox_Connection = nil
 -- // State
 local State = "SEARCH"
 
+-- // Command
+local Whitelisted = {}
+local Teleport_Command = {
+    Put = true,
+    Place = true,
+    Destination = true,
+    Location = true,
+    Warp = true,
+    Goto = true,
+    Move = true,
+}
+
+local Kill_Command = {
+    Get = true,
+    Down = true,
+    Finish = true,
+    Remove = true,
+    Destroy = true,
+    Erase = true,
+    Kill = true,
+}
+
+
 -- // Reset Interval
 local Auto_Reset = false -- Enable
 local ResetInterval = 10 -- Seconds before auto reset
@@ -38,7 +61,7 @@ local BagThreadRunning = false
 -- // Knife
 local Knife_Purchase = false
 local Knife_Auto = false
-local Knife_Tool = "[Knife]"
+local Knife_Tool = "Knife"
 
 -- // Auto
 local Auto = false
@@ -48,6 +71,7 @@ local TeleportInterval = 0
 local MinTeleportInterval = 0
 local MaxTeleportInterval = 60
 local CurrentTargetIndex = nil
+local LastTargetIndex = 0
 local IsResetting = false
 local HookedTargetCharacter = nil
 local CheckIfBagged  = false
@@ -55,9 +79,17 @@ local Auto_Stomp = false
 local Offset = 2
 local Offset_Min = 0
 local Offset_Max = 20
+local Desync = false
 -- Prediction
 local Prediction = false
 local PredictionAmount = 0.12
+-- Stomp
+local BodyParts = {"Head", "UpperTorso", "LowerTorso", "LeftHand", "RightHand", "LeftFoot", "RightFoot", }
+local Selected_Part = "Head"
+local Stomp_Offset = 3
+local Stomp_Offset_Min = -10
+local Stomp_Offset_Max = 10
+local Stomp_Part
 
 -- // Hitbox Extender
 local Hitbox_Extender = true
@@ -184,6 +216,7 @@ local function ResetCharacter(force)
     end
 end
 
+-- Equip The Tool
 local function EquipTool(ToolName)
     local player = getPlayer()
     local character = player.Character or player.CharacterAdded:Wait()
@@ -201,6 +234,7 @@ local function EquipTool(ToolName)
     end
 end
 
+-- Waiting For Character
 local function SafeWaitForCharacter()
     local player = getPlayer()
     return player.Character or player.CharacterAdded:Wait()
@@ -247,6 +281,205 @@ local function Teleport(cframe)
     end
 end
 
+local function Do_Teleport_Command(bring_target, target)
+    --[[local player = getPlayer()
+    local Character = getCharacter()
+    local Root = getRoot(Character)]]
+
+    if not bring_target or not target then return end
+
+    task.wait(0.1)
+
+    -- Get bring target character
+    local bring_targetCharacter = getCharacter(bring_target)
+    if not bring_targetCharacter then return end
+
+    local bring_targetRoot = getRoot(bring_targetCharacter)
+    if not bring_targetRoot then return end
+
+    repeat task.wait() until api:can_desync()
+    
+    api:buy_vehicle(bring_targetRoot.CFrame)
+
+    local vehicle
+    for _ = 1, 100 do
+        vehicle = api:get_current_vehicle(true)
+        if vehicle then
+            break
+        end
+        task.wait(0.1)
+    end
+
+    if not vehicle then
+        warn("Failed to get vehicle")
+        return
+    end
+
+    api:teleport(bring_targetRoot.CFrame)
+    task.wait(0.3)
+
+    -- Get the target character
+    local targetCharacter = getCharacter(target)
+    if not targetCharacter then return end
+
+    local targetRoot = getRoot(targetCharacter)
+    if not targetRoot then return end
+
+    api:teleport(targetRoot.CFrame + Vector3.new(0, 10, 0))
+
+    --[[local tries = 0
+    while tries < 10 do
+        vehicle = api:get_current_vehicle(true)
+
+        if not vehicle then
+            print("Vehicle lost, breaking")
+            break
+        end
+
+        api:teleport(finalCFrame)
+
+        task.wait(0.05)
+        tries += 1
+    end]]
+
+    task.wait(0.3)
+
+    ResetCharacter(true)
+end
+
+local function Do_Kill_Command(target, stomp, loopCount)
+    if not target then return end
+
+    local function isDead(status)
+        return status and status["Dead"]
+    end
+
+    local function isSDeath(status)
+        return status and status["SDeath"]
+    end
+
+    local function isGrabbed(status)
+        return status and status["Grabbed"]
+    end
+
+    print("Starting auto kill")
+
+    -- KILL PHASE
+    local i = 0
+
+    while task.wait(1) do
+        i += 1
+
+        local char = getCharacter(target)
+        if not char then print("Coudn't find Character") return end
+
+        local root = getRoot(char)
+        local Head = char:FindFirstChild("Head")
+        local part = char:FindFirstChild(Selected_Part)
+
+        --if not root or not head or not part then return end
+
+        if not root then
+            warn("No HumanoidRootPart")
+            return
+        end
+
+        if not Head then
+            warn("No Head")
+            return
+        end
+
+        if not part then
+            warn("No selected part:", Selected_Part)
+            return
+        end
+
+        local status = api:get_status_cache(target)
+        if not status then return end
+
+        if isDead(status) then break end
+
+        if isGrabbed(status) then break end
+
+        if loopCount and i > loopCount then break end
+
+        local destination
+
+        print("Teleporting to player")
+
+        if status["K.O"] then
+            if not stomp then
+                break
+            end
+
+            local pos = part.Position + Vector3.new(0, Stomp_Offset, 0)
+            destination = CFrame.new(pos, pos + root.CFrame.LookVector)
+        else
+            destination = root.CFrame * CFrame.new(0, 10, 0)
+        end
+
+        print("Teleporting:", destination)
+
+        if Desync then
+            print("Using desync")
+            api:set_desync_cframe(destination)
+        else
+            print("Teleporting")
+            Teleport(destination)
+        end
+
+        task.wait(0.1)
+
+        local myChar = getCharacter()
+        local myRoot = myChar and getRoot(myChar)
+
+        if myChar and myRoot then
+            local tool = myChar:FindFirstChildOfClass("Tool")
+            local handle = tool and tool:FindFirstChild("Handle")
+
+            if handle then
+                api:force_shoot(handle, Head, myRoot.Position, Head.Position, true)
+            end
+        end
+    end
+
+    -- STOMP FINISH
+    if not stomp then return end
+
+    while task.wait(1) do
+        local char = getCharacter(target)
+        if not char then return end
+
+        local root = getRoot(char)
+        local BodyPart = char:FindFirstChild("UpperTorso")
+        if not root or not BodyPart then return end
+
+        local status = api:get_status_cache(target)
+        if not status then return end
+
+        print("Starting stomp stage")
+
+        if isSDeath(status) then
+            return
+        end
+
+        if isGrabbed(status) then
+            return
+        end
+
+        local pos = BodyPart.Position + Vector3.new(0, Stomp_Offset, 0)
+        --local destination = CFrame.new(pos, pos + root.CFrame.LookVector)
+        local destination = CFrame.new(pos)
+
+        if Desync then
+            api:set_desync_cframe(destination)
+        else
+            Teleport(destination)
+        end
+    end
+end
+
+-- Print Everything You Have In Your Backpack
 local function PrintInventory()
     local player = getPlayer()
     local backpack = getBackpack(player)
@@ -615,7 +848,7 @@ function Auto_Loop()
                     if root then
                         Teleport(root.CFrame * CFrame.new(0, 0, Offset))
                     end
-
+                    
                     local currentCharacter = player.Character
                     local tool = currentCharacter and currentCharacter:FindFirstChildOfClass("Tool")
 
@@ -690,6 +923,60 @@ end
     end
 end);]]
 
+local function Shoot_Target(target)
+    if not target then return end
+    if not getCharacter(target) then return end
+
+    local TargetCharacter = getCharacter(target)
+    local Target_Part = Selected_Part
+    if not TargetCharacter["HumanoidRootPart"] or not TargetCharacter["Head"] or not Target_Part then return end
+
+    local TargetRoot = TargetCharacter["HumanoidRootPart"]
+    local TargetHead = TargetCharacter["Head"]
+    
+    local status = api:get_status_cache(target)
+    if status["Grabbed"] or status["SDeath"] or status["Dead"] then
+        return
+    end
+
+    task.wait(0.1)
+    local Position = TargetCharacter[Target_Part].Position + Vector3.new(0, Stomp_Offset, 0)
+    local Destination
+    if status["K.O"] then
+        if not Auto_Stomp then
+            return
+        end
+        
+        Destination = CFrame.new(Position, Position + TargetRoot.CFrame.LookVector)
+    else
+        Destination = TargetRoot.CFrame * CFrame.new(0, 10, 0)
+    end
+
+    if Desync then
+        api:set_desync_cframe(Destination)
+    else
+        Teleport(Destination)
+    end
+    
+    local MyCharacter = getCharacter()
+    if not MyCharacter then return end
+
+    local MyRoot = getRoot(MyCharacter)
+    if not MyRoot then return end
+
+    local Tool = MyCharacter:FindFirstChildOfClass("Tool")
+    if not Tool then return end
+
+    local Handle = Tool:FindFirstChild("Handle")
+    if not Handle then return end
+
+    --if not api:can_desync() then return end
+
+    task.wait(0.1)
+
+    api:force_shoot(Handle, TargetHead, MyRoot.Position, TargetHead.Position, true)
+end
+
 -- When Client Respawns
 api:on_event("localplayer_spawned", function(character)
     WasBagged = false
@@ -748,13 +1035,58 @@ api:on_event("player_got_shot", function(player, target, part, tool, origin, pos
     if target ~= getPlayer() then
         return
     end
-
+    
     warn(target, "hit", player, "in the", part, "using", tool);
 end);
 
 local player = getPlayer()
 local initialCharacter = player.Character or player.CharacterAdded:Wait()
 hookCharacterDying(initialCharacter)
+
+api:on_command("*", function(player, command, targetArg, ...)
+    if not Whitelisted[player.Name] then return end
+    if not targetArg then return end
+
+    local args = {...}
+    local extra = table.concat(args, " ")
+
+    -- Teleport commands
+    if Teleport_Command[command] then
+        local targetPlayer = Players:FindFirstChild(targetArg)
+        if not targetPlayer then return end
+
+        Do_Teleport_Command(player, targetPlayer)
+        return
+    end
+
+    -- Kill commands
+    if Kill_Command[command] then
+        local stomp = false
+        local loopCount = 1
+
+        if args[1] and args[1]:lower() == "stomp" then
+            stomp = true
+        end
+
+        if tonumber(args[2]) then
+            loopCount = tonumber(args[2])
+        end
+
+        for targetName in targetArg:gmatch("[^,]+") do
+            targetName = targetName:match("^%s*(.-)%s*$")
+
+            print("TargetArg:", targetArg)
+            print("TargetName:", targetName)
+            
+            local targetPlayer = Players:FindFirstChild(targetName)
+            if targetPlayer then
+                Do_Kill_Command(targetPlayer, stomp, loopCount)
+            else
+                warn(("Player '%s' not found."):format(targetName))
+            end
+        end
+    end
+end)
 
 -- // Tabes
 local tabs = {
@@ -768,6 +1100,34 @@ do
     local Buy_Feature = tabs.lua:AddRightGroupbox("Buy Features")
     local Anti_Bag_Features = tabs.lua:AddRightGroupbox("Anti Bag Features")
     local Testing_Features = tabs.lua:AddLeftGroupbox("Testing Features")
+    local Command_Features = tabs.lua:AddLeftGroupbox("Command Features")
+
+    Command_Features:AddDropdown("Whitelist", {
+        SpecialType = 'Player',
+        Text = "Select Players",
+        Multi = true,
+        
+        Callback = function(value)
+            
+            Whitelisted = {}
+            
+            if type(value) == "table" then
+                for k, v in pairs(value) do
+                    if typeof(k) == "string" then
+                        Whitelisted[k] = true
+                    elseif typeof(v) == "string" then
+                        Whitelisted[v] = true
+                    elseif typeof(v) == "boolean" and v == true then
+                        Whitelisted[k] = true
+                    end
+                end
+            end
+            
+            for name, _ in pairs(Whitelisted) do
+                print(" -", name)
+            end
+        end
+    })
 
     -- Check If Owned Gun
     Abuse_Feature:AddToggle("Gun Auto-Buy", {
@@ -847,7 +1207,6 @@ do
         end
     })
 
-
     -- Select A Players To Target
     Kill_Feature:AddDropdown("Target Player", {
         SpecialType = 'Player',
@@ -894,10 +1253,43 @@ do
     })]]
     
     -- Testing Feature
-    Testing_Features:AddButton({
+    --[[Testing_Features:AddButton({
         Text = "Check Inventory",
         Func = function()
             PrintInventory()
+        end,
+    })]]
+
+    Testing_Features:AddButton({
+        Text = "Shoot Player",
+        Func = function()
+            DetachFromTarget()
+
+            local targetList = {}
+            for name, enabled in pairs(SelectedPlayers) do
+                if enabled then
+                    table.insert(targetList, name)
+                end
+            end
+
+            if #targetList == 0 then
+                return
+            end
+
+            LastTargetIndex = LastTargetIndex + 1
+            if LastTargetIndex > #targetList then
+                LastTargetIndex = 1
+            end
+
+            local name = targetList[LastTargetIndex]
+            local player = Players:FindFirstChild(name)
+
+            if player then
+                Shoot_Target(player)
+            else
+                table.remove(targetList, LastTargetIndex)
+                LastTargetIndex = LastTargetIndex - 1
+            end
         end,
     })
 
@@ -997,10 +1389,11 @@ do
         end
     })
 
+    -- If should stomp
     Kill_Feature:AddToggle("Stomp", {
         Text = "Stomp",
         Default = false,
-        
+
         Callback = function(value)
             Auto_Stomp = value
             
@@ -1024,6 +1417,43 @@ do
         end
     })
 
+    -- Stomp Offset
+    Kill_Feature:AddSlider("Stomp_Offset", {
+        Text = "Stomp Offset(Y)",
+        Min = Stomp_Offset_Min,
+        Max = Stomp_Offset_Max,
+        Default = 3,
+        Rounding = 2,
+
+        Callback = function(value)
+            Stomp_Offset = value
+        end
+    })
+
+    -- Stomp Part
+    Kill_Feature:AddDropdown("PartSelector", {
+        Values = BodyParts,
+        Text = "Select Body Part",
+        Default = 1,
+        Multi = false,
+        Tooltip = "Choose which character part to stomp",
+
+        Callback = function(value)
+            Selected_Part = value or {}
+        end
+    })
+
+    -- Desync Kill
+    Kill_Feature:AddToggle("Desync", {
+        Text = "Desync",
+        Default = false,
+
+        Callback = function(value)
+            Desync = value
+        end
+    })
+
+    -- Prediction
     Kill_Feature:AddToggle("Prediction", {
         Text = "Prediction",
         Default = false,
@@ -1066,7 +1496,6 @@ do
 
         Callback = function(value)
             Anti_Bag = value
-            print("Anti Bag:" .. tostring(Anti_Bag))
 
             if value and not BagThreadRunning then
                 task.spawn(Anti_Bag_Loop)
@@ -1091,7 +1520,7 @@ do
         Max = ReturnDelay_Max,
         Default = 0.17,
         Rounding = 2,
-        
+
         Callback = function(value)
             ReturnDelay = value
         end
