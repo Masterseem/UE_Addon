@@ -1,6 +1,7 @@
 -- // Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 -- // API
 local Tool_cache = api:get_tool_cache();
@@ -233,6 +234,7 @@ local function EquipTool(ToolName)
         task.wait(0.05)
     end
 end
+
 
 -- Waiting For Character
 local function SafeWaitForCharacter()
@@ -940,6 +942,14 @@ local function Shoot_Target(target)
     end
 
     task.wait(0.1)
+
+    if not HasTool(getPlayer(), "[Rifle]") then
+        Library:Notify("You don't have a Rifle", 2)
+        return
+    end
+
+    EquipTool("[Rifle]")
+
     local Position = TargetCharacter[Target_Part].Position + Vector3.new(0, Stomp_Offset, 0)
     local Destination
     if status["K.O"] then
@@ -1293,44 +1303,6 @@ do
     Testing_Features:AddButton({
         Text = "Attack Player",
         Func = function()
-            DetachFromTarget()
-
-            local targetList = {}
-            for name, enabled in pairs(SelectedPlayers) do
-                if enabled then
-                    table.insert(targetList, name)
-                end
-            end
-
-            if #targetList == 0 then
-                return
-            end
-
-            LastTargetIndex = LastTargetIndex + 1
-            if LastTargetIndex > #targetList then
-                LastTargetIndex = 1
-            end
-
-            local name = targetList[LastTargetIndex]
-            local player = Players:FindFirstChild(name)
-
-            if player then
-                Shoot_Target(player)
-            else
-                table.remove(targetList, LastTargetIndex)
-                LastTargetIndex = LastTargetIndex - 1
-            end
-        end,
-    })
-
-    Testing_Features:AddLabel('¯\_(ツ)_/¯'):AddKeyPicker('¯\_(ツ)_/¯', {
-        Default = 'M',
-        Mode = 'Always',
-        NoUI = false,
-
-        Text = 'Does something idk',
-        
-        Callback = function(Value)
             CycleTarget()
         end,
     })
@@ -1568,6 +1540,15 @@ do
         end
     })
 end
+
+-- UserInput
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if gameProcessedEvent then return end
+
+    if input.KeyCode == Enum.KeyCode.M then
+        CycleTarget()
+    end
+end)
 
 -- Reset Interval LOOP
 task.spawn(function()
